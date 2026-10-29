@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>AssetAlign Advisor Library</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+<style>
+:root{--navy:#0d1f33;--navy-mid:#162b45;--gold:#f5a623;--gold-dark:#c9843a;--cream:#f8f5ef;--ink:#1c2733;--muted:#5b6b7c;--border:#e3e2dc;--card:#fff;--zero:#ece9e1;--warn:#b5482e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--cream);color:var(--ink);font-family:'DM Sans',system-ui,sans-serif;font-size:15px}
+header{background:var(--navy);color:#fff;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+header h1{font-family:'Playfair Display',serif;font-size:22px;margin:0}
+header h1 span{color:var(--gold)}
+header .tag{font-size:12px;color:#c9d3df;letter-spacing:.06em;text-transform:uppercase}
+main{max-width:1200px;margin:0 auto;padding:20px 16px 60px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+.stat b{display:block;font-size:26px;font-family:'Playfair Display',serif;color:var(--navy)}
+.stat span{font-size:13px;color:var(--muted)}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:18px}
+.panel h2{font-family:'Playfair Display',serif;font-size:19px;margin:0 0 4px;color:var(--navy)}
+.panel .sub{color:var(--muted);font-size:13px;margin:0 0 12px}
+.maprow{display:grid;grid-template-columns:1fr 280px;gap:18px}
+#map svg{width:100%;height:auto;display:block}
+#map path.state{stroke:#fff;stroke-width:.8;cursor:pointer;transition:opacity .15s}
+#map path.state:hover{opacity:.8}
+#map path.state.sel{stroke:var(--gold);stroke-width:3}
+#map circle.office{fill:var(--gold);stroke:var(--navy);stroke-width:1.5;pointer-events:none}
+.legend{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-top:8px;flex-wrap:wrap}
+.legend i{display:inline-block;width:22px;height:12px;border-radius:2px}
+.side h3{font-size:14px;margin:0 0 6px;color:var(--navy)}
+.side .big{font-family:'Playfair Display',serif;font-size:30px;color:var(--navy)}
+.side ul{list-style:none;padding:0;margin:6px 0 14px;max-height:220px;overflow:auto}
+.side li{padding:6px 0;border-bottom:1px solid var(--border);font-size:14px;cursor:pointer}
+.side li:hover{color:var(--gold-dark)}
+.gaps{display:flex;flex-wrap:wrap;gap:4px}
+.gaps span{font-size:12px;background:var(--zero);border-radius:4px;padding:2px 6px}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.toolbar input,.toolbar select{font:inherit;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;min-width:0;max-width:100%}
+.toolbar input{flex:1 1 220px}
+.chip{background:var(--navy);color:#fff;border-radius:20px;padding:6px 12px;font-size:13px;cursor:pointer;border:0;font-family:inherit}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;cursor:pointer;display:flex;gap:12px;align-items:flex-start;transition:box-shadow .15s}
+.card:hover{box-shadow:0 6px 18px rgba(13,31,51,.1)}
+.av{width:64px;height:64px;border-radius:50%;object-fit:cover;flex:none;background:var(--navy-mid);color:var(--gold);display:flex;align-items:center;justify-content:center;font-weight:700}
+.card h4{margin:0 0 2px;font-size:15px;color:var(--navy)}
+.card .firm{font-size:13px;color:var(--muted)}
+.card .meta{font-size:12px;color:var(--muted);margin-top:6px}
+.badge{display:inline-block;font-size:11px;border-radius:4px;padding:2px 6px;margin:4px 4px 0 0;background:#f3efe4;color:var(--ink)}
+.badge.warn{background:#f8e3dc;color:var(--warn)}
+.badge.team{background:#e4ecf5;color:var(--navy)}
+.empty{color:var(--muted);padding:20px;text-align:center}
+#tip{position:fixed;pointer-events:none;background:var(--navy);color:#fff;font-size:13px;padding:6px 10px;border-radius:6px;display:none;z-index:30}
+.modal{position:fixed;inset:0;background:rgba(13,31,51,.55);display:none;align-items:center;justify-content:center;padding:16px;z-index:20}
+.modal.open{display:flex}
+.sheet{background:#fff;border-radius:16px;max-width:760px;width:100%;max-height:90vh;overflow:auto;position:relative}
+.sheet .top{background:var(--navy);color:#fff;padding:22px 56px 22px 22px;display:flex;gap:18px;align-items:center;border-radius:16px 16px 0 0}
+.sheet .top .av{width:96px;height:96px;font-size:26px}
+.sheet .top h3{font-family:'Playfair Display',serif;font-size:22px;margin:0}
+.sheet .top p{margin:4px 0 0;color:#c9d3df;font-size:14px}
+.sheet .body{padding:20px 22px}
+.sheet .tagline{font-style:italic;color:var(--gold-dark);margin:0 0 12px}
+.sheet .bio{white-space:pre-line;line-height:1.55;margin:0 0 16px}
+.kv{display:grid;grid-template-columns:170px 1fr;gap:6px 14px;font-size:14px;margin:0 0 16px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;overflow-wrap:anywhere}
+.sheet h5{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:16px 0 6px}
+.sheet a{color:var(--navy)}
+.nav{display:flex;justify-content:space-between;align-items:center;padding:12px 22px;border-top:1px solid var(--border);position:sticky;bottom:0;background:#fff}
+.nav button{font:inherit;border:1px solid var(--border);background:#fff;border-radius:8px;padding:8px 14px;cursor:pointer}
+.nav button:disabled{opacity:.4;cursor:default}
+.x{position:absolute;top:12px;right:12px;background:rgba(255,255,255,.15);color:#fff;border:0;border-radius:8px;font-size:18px;padding:4px 10px;cursor:pointer}
+.team-m{border-top:1px solid var(--border);padding:8px 0;font-size:14px}
+#lock{position:fixed;inset:0;background:var(--navy);display:flex;align-items:center;justify-content:center;z-index:40;padding:16px}
+#lock form{background:#fff;border-radius:16px;padding:28px;max-width:360px;width:100%;text-align:center}
+#lock h2{font-family:'Playfair Display',serif;color:var(--navy);margin:0 0 6px}
+#lock p{color:var(--muted);font-size:14px;margin:0 0 16px}
+#lock input{font:inherit;width:100%;padding:11px;border:1px solid var(--border);border-radius:8px;margin-bottom:10px}
+#lock button{font:inherit;width:100%;padding:11px;border:0;border-radius:8px;background:var(--gold);color:var(--navy);font-weight:700;cursor:pointer}
+#lock .err{color:var(--warn);font-size:13px;min-height:18px}
+@media (max-width:860px){.maprow{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.kv{grid-template-columns:1fr}.kv dt{margin-top:6px}.sheet .top{flex-direction:column;align-items:flex-start}}
+</style>
+</head>
+<body>
+<div id="lock"><form id="lockForm">
+  <h2>Advisor Library</h2><p>Internal to AssetAlign. Enter the team passcode.</p>
+  <input id="pass" type="password" placeholder="Passcode" autocomplete="current-password">
+  <div class="err" id="err"></div>
+  <button type="submit">Open</button>
+</form></div>
+
+<header>
+  <div><div class="tag">AssetAlign · Internal</div><h1>Advisor <span>Library</span></h1></div>
+  <div class="tag" id="updated"></div>
+</header>
+
+<main>
+  <div class="stats">
+    <div class="stat"><b id="sAdv">–</b><span>advisor profiles</span></div>
+    <div class="stat"><b id="sPeople">–</b><span>advisors incl. team members</span></div>
+    <div class="stat"><b id="sStates">–</b><span>states with coverage</span></div>
+    <div class="stat"><b id="sNat">–</b><span>licensed in all 50 states + DC</span></div>
+  </div>
+
+  <section class="panel">
+    <h2>Coverage map</h2>
+    <p class="sub">States are shaded by how many advisors are licensed there. Gold dots show office locations. Click a state to filter the list.</p>
+    <div class="maprow">
+      <div><div id="map"></div><div class="legend" id="legend"></div></div>
+      <div class="side" id="side"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Advisors</h2>
+    <p class="sub" id="listSub"></p>
+    <div class="toolbar">
+      <input id="q" type="search" placeholder="Search name, firm, city, specialty…">
+      <select id="fSpec"><option value="">All specialties</option></select>
+      <select id="fLife"><option value="">All life stages</option></select>
+      <button class="chip" id="clearState" style="display:none"></button>
+    </div>
+    <div class="grid" id="grid"></div>
+  </section>
+</main>
+
+<div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
+<div id="tip"></div>
+
+<script>
+const FEED = 'https://assetalign-advisor-directory.netlify.app/.netlify/functions/advisors-feed';
+const ST = {AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',CT:'Connecticut',DE:'Delaware',DC:'District of Columbia',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming'};
+const NAME2AB = Object.fromEntries(Object.entries(ST).map(([a,n]) => [n.toLowerCase(), a]));
+let ADV = [], view = [], selState = '', cur = -1, counts = {}, paths = null;
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const store = {
+  get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } },
+  set(k,v){ try { localStorage.setItem(k,v); } catch(e){} },
+  del(k){ try { localStorage.removeItem(k); } catch(e){} },
+};
+const initials = n => n.replace(/[^A-Za-z .'-]/g,'').split(' ').filter(Boolean).slice(0,2).map(w => w[0].toUpperCase()).join('');
+const cleanName = n => n.split(/\s*[,|]\s*|\s+(?=CFP|CRPC|ChFC|CPFA|CIMA|TPCP|NQPC)/)[0].trim();
+const titleCase = s => s === s.toUpperCase() ? s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : s;
+const avatar = a => a.profile.headshot_url
+  ? `<img class="av" src="${esc(a.profile.headshot_url)}" alt="" loading="lazy">`
+  : `<div class="av">${esc(initials(a.display))}</div>`;
+const href = u => /^https?:\/\//i.test(u) ? u : 'https://' + u;
+const link = u => u ? `<a href="${esc(href(u))}" target="_blank" rel="noopener">${esc(u)}</a>` : '';
+const abOf = f => NAME2AB[f.properties.name.toLowerCase()];
+
+function officeState(loc){
+  const m = String(loc || '').match(/,\s*([A-Za-z .]+?)\s*(\d{5})?\s*$/); if (!m) return '';
+  const t = m[1].trim(); if (ST[t.toUpperCase()]) return t.toUpperCase();
+  return NAME2AB[t.toLowerCase()] || '';
+}
+const allStates = a => a.matching.works_nationwide || Object.keys(ST).every(s => a.matching.states_licensed.includes(s));
+const licensedIn = (a, s) => a.matching.works_nationwide || a.matching.states_licensed.includes(s);
+const incomplete = a => !a.matching.states_licensed.length && !a.matching.specialties.length && !a.matching.life_stages.length;
+
+async function load(key){
+  const r = await fetch(FEED, { headers: { 'X-API-Key': key } });
+  if (r.status === 401) throw new Error('auth');
+  if (!r.ok) throw new Error('Feed error ' + r.status);
+  return r.json();
+}
+
+document.getElementById('lockForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const k = document.getElementById('pass').value.trim(); if (!k) return;
+  document.getElementById('err').textContent = 'Loading…';
+  try { start(await load(k)); store.set('aa_lib_key', k); }
+  catch(err){ document.getElementById('err').textContent = err.message === 'auth' ? 'Wrong passcode.' : 'Could not load advisors. Try again.'; }
+});
+(async () => {
+  const k = store.get('aa_lib_key'); if (!k) return;
+  try { start(await load(k)); } catch(e){ store.del('aa_lib_key'); }
+})();
+
+function start(data){
+  document.getElementById('lock').style.display = 'none';
+  ADV = data.advisors.map(a => ({ ...a, display: titleCase(cleanName(a.profile.full_name)), office: officeState(a.profile.location) }));
+  Object.keys(ST).forEach(s => counts[s] = ADV.filter(a => licensedIn(a, s)).length);
+  document.getElementById('updated').textContent = 'Live · ' + new Date(data.generated_at).toLocaleString('en-US', { dateStyle:'medium', timeStyle:'short' });
+  document.getElementById('sAdv').textContent = ADV.length;
+  document.getElementById('sPeople').textContent = ADV.length + ADV.reduce((n, a) => n + a.team_members.length, 0);
+  document.getElementById('sStates').textContent = Object.values(counts).filter(Boolean).length + ' / 51';
+  document.getElementById('sNat').textContent = ADV.filter(allStates).length;
+  fillSelect('fSpec', ADV.flatMap(a => a.matching.specialties));
+  fillSelect('fLife', ADV.flatMap(a => a.matching.life_stages));
+  renderSide(); render(); drawMap();
+}
+function fillSelect(id, vals){
+  const sel = document.getElementById(id);
+  [...new Set(vals)].sort().forEach(v => sel.insertAdjacentHTML('beforeend', `<option>${esc(v)}</option>`));
+}
+
+/* ---------- map ---------- */
+async function drawMap(){
+  const us = await (await fetch('https://cdn.jsdelivr.net/npm/us-atlas@3.0.1/states-10m.json')).json();
+  const states = topojson.feature(us, us.objects.states).features.filter(abOf);
+  const max = Math.max(1, ...Object.values(counts));
+  const color = d3.scaleSequential([0, max], d3.interpolateRgb('#fbe3b0', '#0d1f33'));
+  const W = 960, H = 600;
+  const path = d3.geoPath(d3.geoAlbersUsa().fitSize([W, H], { type:'FeatureCollection', features: states }));
+  const svg = d3.select('#map').append('svg').attr('viewBox', `0 0 ${W} ${H}`).attr('role', 'img').attr('aria-label', 'Map of advisor coverage by state');
+  const tip = document.getElementById('tip');
+  paths = svg.append('g').selectAll('path').data(states).join('path').attr('class', 'state').attr('d', path)
+    .attr('fill', f => counts[abOf(f)] ? color(counts[abOf(f)]) : 'var(--zero)')
+    .on('mousemove', (ev, f) => {
+      const ab = abOf(f), c = counts[ab], o = ADV.filter(a => a.office === ab).length;
+      tip.style.display = 'block'; tip.style.left = ev.clientX + 12 + 'px'; tip.style.top = ev.clientY + 12 + 'px';
+      tip.innerHTML = `<b>${esc(f.properties.name)}</b><br>${c} advisor${c === 1 ? '' : 's'} licensed${o ? `<br>${o} office${o === 1 ? '' : 's'} here` : ''}`;
+    })
+    .on('mouseleave', () => tip.style.display = 'none')
+    .on('click', (ev, f) => { const ab = abOf(f); selState = selState === ab ? '' : ab; renderSide(); render(); });
+  // office dots at each state's centroid, sized by the number of offices there
+  const offices = [...d3.rollup(ADV.filter(a => a.office), v => v.length, a => a.office)];
+  svg.append('g').selectAll('circle').data(offices).join('circle').attr('class', 'office')
+    .attr('r', d => 5 + d[1] * 2.5)
+    .attr('transform', d => { const f = states.find(s => abOf(s) === d[0]); const c = f ? path.centroid(f) : [NaN]; return isNaN(c[0]) ? 'translate(-99,-99)' : `translate(${c})`; });
+  const steps = [...new Set([1, Math.round(max / 3), Math.round(2 * max / 3), max])].filter(Boolean);
+  document.getElementById('legend').innerHTML = `<i style="background:var(--zero)"></i> 0 ` +
+    steps.map(s => `<i style="background:${color(s)}"></i> ${s}`).join(' ') +
+    ` advisors licensed &nbsp; <svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="#f5a623" stroke="#0d1f33" stroke-width="1.5"/></svg> office location`;
+  renderSide();
+}
+
+function renderSide(){
+  const side = document.getElementById('side');
+  if (paths) paths.classed('sel', f => abOf(f) === selState);
+  if (selState){
+    const lic = ADV.filter(a => licensedIn(a, selState)), off = ADV.filter(a => a.office === selState);
+    side.innerHTML = `<h3>${esc(ST[selState])}</h3><div class="big">${lic.length}</div><div class="sub">advisor${lic.length === 1 ? '' : 's'} licensed here</div>
+      <ul>${lic.map(a => `<li data-id="${a.id}">${esc(a.display)} <span style="color:var(--muted)">· ${esc(a.profile.firm_name)}</span></li>`).join('') || '<li style="cursor:default">No coverage yet</li>'}</ul>
+      ${off.length ? `<h3>Offices in ${esc(ST[selState])}</h3><ul>${off.map(a => `<li data-id="${a.id}">${esc(a.display)} · ${esc(a.profile.location)}</li>`).join('')}</ul>` : ''}
+      <button class="chip" id="allStates">Show all states</button>`;
+    document.getElementById('allStates').onclick = () => { selState = ''; renderSide(); render(); };
+  } else {
+    const gaps = Object.keys(ST).filter(s => !counts[s]);
+    const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 6);
+    side.innerHTML = `<h3>Strongest coverage</h3><ul>${top.map(([s, c]) => `<li data-st="${s}">${esc(ST[s])} · ${c}</li>`).join('')}</ul>
+      <h3>No coverage (${gaps.length})</h3><div class="gaps">${gaps.map(s => `<span title="${esc(ST[s])}">${s}</span>`).join('') || '<span>Every state covered</span>'}</div>`;
+  }
+  side.querySelectorAll('li[data-id]').forEach(li => li.onclick = () => openById(li.dataset.id));
+  side.querySelectorAll('li[data-st]').forEach(li => li.onclick = () => { selState = li.dataset.st; renderSide(); render(); });
+}
+
+/* ---------- list ---------- */
+['q', 'fSpec', 'fLife'].forEach(id => document.getElementById(id).addEventListener('input', render));
+document.getElementById('clearState').onclick = () => { selState = ''; renderSide(); render(); };
+
+function render(){
+  const q = document.getElementById('q').value.toLowerCase(), sp = document.getElementById('fSpec').value, lf = document.getElementById('fLife').value;
+  view = ADV.filter(a => (!selState || licensedIn(a, selState)) &&
+    (!sp || a.matching.specialties.includes(sp)) && (!lf || a.matching.life_stages.includes(lf)) &&
+    (!q || [a.profile.full_name, a.profile.firm_name, a.profile.location, a.profile.top_specialties, a.matching.specialties.join(' '), a.team_members.map(m => m.name).join(' ')].join(' ').toLowerCase().includes(q)));
+  const cs = document.getElementById('clearState');
+  cs.style.display = selState ? '' : 'none'; cs.textContent = selState ? `Licensed in ${ST[selState]} ✕` : '';
+  document.getElementById('listSub').textContent = `${view.length} of ${ADV.length} advisors. Click any advisor to see the full profile, then use the arrows to click through.`;
+  document.getElementById('grid').innerHTML = view.map((a, i) => `<div class="card" data-i="${i}">${avatar(a)}<div>
+      <h4>${esc(a.display)}</h4><div class="firm">${esc(a.profile.firm_name)}</div>
+      <div class="meta">${esc(a.profile.location)}${allStates(a) ? ' · All states' : a.matching.states_licensed.length ? ` · ${a.matching.states_licensed.length} state${a.matching.states_licensed.length === 1 ? '' : 's'}` : ''}</div>
+      ${a.listing_type === 'team' ? `<span class="badge team">Team${a.team_members.length ? ` +${a.team_members.length}` : ''}</span>` : ''}${incomplete(a) ? '<span class="badge warn">No matching data</span>' : ''}
+    </div></div>`).join('') || '<div class="empty">No advisors match these filters.</div>';
+  document.querySelectorAll('.card').forEach(c => c.onclick = () => openAt(+c.dataset.i));
+}
+
+/* ---------- profile ---------- */
+const modal = document.getElementById('modal');
+function openById(id){
+  let i = view.findIndex(a => a.id === id);
+  if (i < 0){ ['q', 'fSpec', 'fLife'].forEach(x => document.getElementById(x).value = ''); render(); i = view.findIndex(a => a.id === id); }
+  openAt(i);
+}
+function openAt(i){
+  if (i < 0 || i >= view.length) return;
+  cur = i;
+  const a = view[i], m = a.matching, p = a.profile, c = a.contact, cr = a.credentials;
+  const row = (k, v) => v ? `<dt>${k}</dt><dd>${v}</dd>` : '';
+  document.getElementById('sheet').innerHTML = `
+    <div class="top">${avatar(a)}<div><h3>${esc(p.full_name)}</h3><p>${esc(p.firm_name)}${p.location ? ' · ' + esc(p.location) : ''}</p></div>
+      <button class="x" id="closeBtn" aria-label="Close">✕</button></div>
+    <div class="body">
+      ${p.tagline ? `<p class="tagline">${esc(p.tagline)}</p>` : ''}
+      ${incomplete(a) ? '<p class="badge warn">No states, specialties or life stages filled in yet, so this advisor cannot be matched.</p>' : ''}
+      ${p.bio ? `<p class="bio">${esc(p.bio)}</p>` : ''}
+      <h5>Matching</h5><dl class="kv">
+        ${row('Licensed in', m.works_nationwide ? 'Works nationwide' : allStates(a) ? 'All 50 states + DC' : esc(m.states_licensed.join(', ')))}
+        ${row('Life stages', esc(m.life_stages.join(', ')))}
+        ${row('Specialties', esc(m.specialties.join(', ')))}
+        ${row('Top specialties', esc(p.top_specialties))}
+        ${row('Minimum assets', esc(m.min_assets))}
+        ${row('Meeting format', esc(m.meeting_format))}
+        ${row('Languages', esc(m.languages))}
+        ${row('Compensation', esc(m.compensation_model))}
+      </dl>
+      <h5>Background</h5><dl class="kv">
+        ${row('Years of experience', esc(p.years_experience))}
+        ${row('Clients', esc(p.client_count))}
+        ${row('Designations', esc(cr.designations))}
+        ${row('Individual CRD', cr.individual_crd ? `${esc(cr.individual_crd)} · <a href="https://brokercheck.finra.org/individual/summary/${encodeURIComponent(cr.individual_crd)}" target="_blank" rel="noopener">BrokerCheck</a>` : '')}
+        ${row('Firm CRD', esc(cr.firm_crd))}
+        ${row('Insurance licensed', esc([cr.insurance_licensed, cr.insurance_details].filter(Boolean).join(' · ')))}
+        ${row('Satellite offices', esc(p.satellite_offices.join(' · ')))}
+      </dl>
+      <h5>Contact</h5><dl class="kv">
+        ${row('Email', c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '')}
+        ${row('Phone', esc(c.phone))}
+        ${row('Book a call', link(c.scheduling_link))}
+        ${row('Website', link(c.website))}
+        ${row('LinkedIn', link(c.linkedin))}
+        ${row('Submitted', new Date(a.submitted_at).toLocaleDateString('en-US', { dateStyle:'medium' }))}
+      </dl>
+      ${a.team_members.length ? `<h5>Team${a.team_name ? ' · ' + esc(a.team_name) : ''}</h5>` + a.team_members.map(t => `<div class="team-m"><b>${esc(t.name)}</b>${t.title ? ' · ' + esc(t.title) : ''}${t.linkedin ? ' · ' + link(t.linkedin) : ''}${t.bio ? `<div style="color:var(--muted);margin-top:4px">${esc(t.bio)}</div>` : ''}</div>`).join('') : ''}
+    </div>
+    <div class="nav"><button id="prevBtn" ${i === 0 ? 'disabled' : ''}>← Previous</button><span style="color:var(--muted);font-size:13px">${i + 1} of ${view.length}</span><button id="nextBtn" ${i === view.length - 1 ? 'disabled' : ''}>Next →</button></div>`;
+  document.getElementById('closeBtn').onclick = closeM;
+  document.getElementById('prevBtn').onclick = () => openAt(cur - 1);
+  document.getElementById('nextBtn').onclick = () => openAt(cur + 1);
+  modal.classList.add('open'); document.getElementById('sheet').scrollTop = 0;
+}
+function closeM(){ modal.classList.remove('open'); }
+modal.addEventListener('click', e => { if (e.target === modal) closeM(); });
+document.addEventListener('keydown', e => {
+  if (!modal.classList.contains('open')) return;
+  if (e.key === 'Escape') closeM();
+  if (e.key === 'ArrowRight') openAt(cur + 1);
+  if (e.key === 'ArrowLeft') openAt(cur - 1);
+});
+</script>
+</body>
+</html>
