@@ -31,6 +31,9 @@ main{max-width:1200px;margin:0 auto;padding:20px 16px 60px}
 #map path.state:hover{opacity:.8}
 #map path.state.sel{stroke:var(--gold);stroke-width:3}
 #map circle.office{fill:var(--gold);stroke:var(--navy);stroke-width:1.5;pointer-events:none}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:10px}
+.seg button{font:inherit;font-size:13px;border:0;background:#fff;padding:7px 14px;cursor:pointer;color:var(--ink)}
+.seg button.on{background:var(--navy);color:#fff}
 .legend{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-top:8px;flex-wrap:wrap}
 .legend i{display:inline-block;width:22px;height:12px;border-radius:2px}
 .side h3{font-size:14px;margin:0 0 6px;color:var(--navy)}
@@ -109,7 +112,8 @@ main{max-width:1200px;margin:0 auto;padding:20px 16px 60px}
 
   <section class="panel">
     <h2>Coverage map</h2>
-    <p class="sub">States are shaded by how many advisors are licensed there. Gold dots show office locations. Click a state to filter the list.</p>
+    <p class="sub" id="mapSub"></p>
+    <div class="seg" role="tablist"><button id="mLic" class="on">Licensed to serve</button><button id="mOff">Offices</button></div>
     <div class="maprow">
       <div><div id="map"></div><div class="legend" id="legend"></div></div>
       <div class="side" id="side"></div>
@@ -136,7 +140,7 @@ main{max-width:1200px;margin:0 auto;padding:20px 16px 60px}
 const FEED = 'https://assetalign-advisor-directory.netlify.app/.netlify/functions/advisors-feed';
 const ST = {AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',CT:'Connecticut',DE:'Delaware',DC:'District of Columbia',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming'};
 const NAME2AB = Object.fromEntries(Object.entries(ST).map(([a,n]) => [n.toLowerCase(), a]));
-let ADV = [], view = [], selState = '', cur = -1, counts = {}, paths = null;
+let ADV = [], view = [], selState = '', cur = -1, counts = {}, licCounts = {}, offCounts = {}, mode = 'lic', paths = null, recolor = () => {};
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const store = {
@@ -185,15 +189,16 @@ document.getElementById('lockForm').addEventListener('submit', async e => {
 function start(data){
   document.getElementById('lock').style.display = 'none';
   ADV = data.advisors.map(a => ({ ...a, display: titleCase(cleanName(a.profile.full_name)), office: officeState(a.profile.location) }));
-  Object.keys(ST).forEach(s => counts[s] = ADV.filter(a => licensedIn(a, s)).length);
+  Object.keys(ST).forEach(s => { licCounts[s] = ADV.filter(a => licensedIn(a, s)).length; offCounts[s] = ADV.filter(a => a.office === s).length; });
+  counts = licCounts;
   document.getElementById('updated').textContent = 'Live · ' + new Date(data.generated_at).toLocaleString('en-US', { dateStyle:'medium', timeStyle:'short' });
   document.getElementById('sAdv').textContent = ADV.length;
   document.getElementById('sPeople').textContent = ADV.length + ADV.reduce((n, a) => n + a.team_members.length, 0);
-  document.getElementById('sStates').textContent = Object.values(counts).filter(Boolean).length + ' / 51';
+  document.getElementById('sStates').textContent = Object.values(licCounts).filter(Boolean).length + ' / 51';
   document.getElementById('sNat').textContent = ADV.filter(allStates).length;
   fillSelect('fSpec', ADV.flatMap(a => a.matching.specialties));
   fillSelect('fLife', ADV.flatMap(a => a.matching.life_stages));
-  renderSide(); render(); drawMap();
+  setMode('lic'); drawMap();
 }
 function fillSelect(id, vals){
   const sel = document.getElementById(id);
@@ -204,18 +209,15 @@ function fillSelect(id, vals){
 async function drawMap(){
   const us = await (await fetch('https://cdn.jsdelivr.net/npm/us-atlas@3.0.1/states-10m.json')).json();
   const states = topojson.feature(us, us.objects.states).features.filter(abOf);
-  const max = Math.max(1, ...Object.values(counts));
-  const color = d3.scaleSequential([0, max], d3.interpolateRgb('#fbe3b0', '#0d1f33'));
   const W = 960, H = 600;
   const path = d3.geoPath(d3.geoAlbersUsa().fitSize([W, H], { type:'FeatureCollection', features: states }));
   const svg = d3.select('#map').append('svg').attr('viewBox', `0 0 ${W} ${H}`).attr('role', 'img').attr('aria-label', 'Map of advisor coverage by state');
   const tip = document.getElementById('tip');
   paths = svg.append('g').selectAll('path').data(states).join('path').attr('class', 'state').attr('d', path)
-    .attr('fill', f => counts[abOf(f)] ? color(counts[abOf(f)]) : 'var(--zero)')
     .on('mousemove', (ev, f) => {
       const ab = abOf(f), c = counts[ab], o = ADV.filter(a => a.office === ab).length;
       tip.style.display = 'block'; tip.style.left = ev.clientX + 12 + 'px'; tip.style.top = ev.clientY + 12 + 'px';
-      tip.innerHTML = `<b>${esc(f.properties.name)}</b><br>${c} advisor${c === 1 ? '' : 's'} licensed${o ? `<br>${o} office${o === 1 ? '' : 's'} here` : ''}`;
+      const c2 = licCounts[ab]; tip.innerHTML = `<b>${esc(f.properties.name)}</b><br>${c2} advisor${c2 === 1 ? '' : 's'} licensed<br>${o} office${o === 1 ? '' : 's'} here`;
     })
     .on('mouseleave', () => tip.style.display = 'none')
     .on('click', (ev, f) => { const ab = abOf(f); selState = selState === ab ? '' : ab; renderSide(); render(); });
@@ -224,28 +226,47 @@ async function drawMap(){
   svg.append('g').selectAll('circle').data(offices).join('circle').attr('class', 'office')
     .attr('r', d => 5 + d[1] * 2.5)
     .attr('transform', d => { const f = states.find(s => abOf(s) === d[0]); const c = f ? path.centroid(f) : [NaN]; return isNaN(c[0]) ? 'translate(-99,-99)' : `translate(${c})`; });
-  const steps = [...new Set([1, Math.round(max / 3), Math.round(2 * max / 3), max])].filter(Boolean);
-  document.getElementById('legend').innerHTML = `<i style="background:var(--zero)"></i> 0 ` +
-    steps.map(s => `<i style="background:${color(s)}"></i> ${s}`).join(' ') +
-    ` advisors licensed &nbsp; <svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="#f5a623" stroke="#0d1f33" stroke-width="1.5"/></svg> office location`;
-  renderSide();
+  recolor = () => {
+    const max = Math.max(1, ...Object.values(counts));
+    const color = d3.scaleSequential([0, max], d3.interpolateRgb('#fbe3b0', '#0d1f33'));
+    paths.attr('fill', f => counts[abOf(f)] ? color(counts[abOf(f)]) : 'var(--zero)');
+    const steps = [...new Set([1, Math.round(max / 3), Math.round(2 * max / 3), max])].filter(Boolean);
+    document.getElementById('legend').innerHTML = `<i style="background:var(--zero)"></i> 0 ` +
+      steps.map(s => `<i style="background:${color(s)}"></i> ${s}`).join(' ') +
+      (mode === 'lic' ? ' advisors licensed' : ' advisor offices') +
+      ` &nbsp; <svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="#f5a623" stroke="#0d1f33" stroke-width="1.5"/></svg> office location`;
+  };
+  recolor(); renderSide();
 }
+
+function setMode(m){
+  mode = m; counts = m === 'lic' ? licCounts : offCounts;
+  document.getElementById('mLic').classList.toggle('on', m === 'lic');
+  document.getElementById('mOff').classList.toggle('on', m === 'off');
+  document.getElementById('mapSub').textContent = m === 'lic'
+    ? 'Shaded by how many advisors are licensed to serve members in each state. Most advisors are licensed everywhere, so this view is nearly uniform. Click a state to filter the list.'
+    : 'Shaded by where advisors have their main office, which matters for members who want to meet in person. Click a state to filter the list.';
+  if (paths) recolor(); renderSide(); render();
+}
+document.getElementById('mLic').onclick = () => setMode('lic');
+document.getElementById('mOff').onclick = () => setMode('off');
 
 function renderSide(){
   const side = document.getElementById('side');
   if (paths) paths.classed('sel', f => abOf(f) === selState);
   if (selState){
-    const lic = ADV.filter(a => licensedIn(a, selState)), off = ADV.filter(a => a.office === selState);
-    side.innerHTML = `<h3>${esc(ST[selState])}</h3><div class="big">${lic.length}</div><div class="sub">advisor${lic.length === 1 ? '' : 's'} licensed here</div>
-      <ul>${lic.map(a => `<li data-id="${a.id}">${esc(a.display)} <span style="color:var(--muted)">· ${esc(a.profile.firm_name)}</span></li>`).join('') || '<li style="cursor:default">No coverage yet</li>'}</ul>
+    const lic = mode === 'lic' ? ADV.filter(a => licensedIn(a, selState)) : [], off = ADV.filter(a => a.office === selState);
+    const n = mode === 'lic' ? lic.length : off.length;
+    side.innerHTML = `<h3>${esc(ST[selState])}</h3><div class="big">${n}</div><div class="sub">${mode === 'lic' ? `advisor${n === 1 ? '' : 's'} licensed here` : `advisor office${n === 1 ? '' : 's'} here`}</div>
+      ${mode === 'lic' ? `<ul>${lic.map(a => `<li data-id="${a.id}">${esc(a.display)} <span style="color:var(--muted)">· ${esc(a.profile.firm_name)}</span></li>`).join('') || '<li style="cursor:default">No coverage yet</li>'}</ul>` : ''}
       ${off.length ? `<h3>Offices in ${esc(ST[selState])}</h3><ul>${off.map(a => `<li data-id="${a.id}">${esc(a.display)} · ${esc(a.profile.location)}</li>`).join('')}</ul>` : ''}
       <button class="chip" id="allStates">Show all states</button>`;
     document.getElementById('allStates').onclick = () => { selState = ''; renderSide(); render(); };
   } else {
     const gaps = Object.keys(ST).filter(s => !counts[s]);
-    const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 6);
-    side.innerHTML = `<h3>Strongest coverage</h3><ul>${top.map(([s, c]) => `<li data-st="${s}">${esc(ST[s])} · ${c}</li>`).join('')}</ul>
-      <h3>No coverage (${gaps.length})</h3><div class="gaps">${gaps.map(s => `<span title="${esc(ST[s])}">${s}</span>`).join('') || '<span>Every state covered</span>'}</div>`;
+    const top = Object.entries(counts).filter(e => e[1]).sort((a, b) => b[1] - a[1]).slice(0, 6);
+    side.innerHTML = `<h3>${mode === 'lic' ? 'Strongest coverage' : 'Most offices'}</h3><ul>${top.map(([s, c]) => `<li data-st="${s}">${esc(ST[s])} · ${c}</li>`).join('')}</ul>
+      <h3>${mode === 'lic' ? 'No coverage' : 'No office'} (${gaps.length})</h3><div class="gaps">${gaps.map(s => `<span title="${esc(ST[s])}">${s}</span>`).join('') || '<span>Every state covered</span>'}</div>`;
   }
   side.querySelectorAll('li[data-id]').forEach(li => li.onclick = () => openById(li.dataset.id));
   side.querySelectorAll('li[data-st]').forEach(li => li.onclick = () => { selState = li.dataset.st; renderSide(); render(); });
@@ -257,11 +278,11 @@ document.getElementById('clearState').onclick = () => { selState = ''; renderSid
 
 function render(){
   const q = document.getElementById('q').value.toLowerCase(), sp = document.getElementById('fSpec').value, lf = document.getElementById('fLife').value;
-  view = ADV.filter(a => (!selState || licensedIn(a, selState)) &&
+  view = ADV.filter(a => (!selState || (mode === 'lic' ? licensedIn(a, selState) : a.office === selState)) &&
     (!sp || a.matching.specialties.includes(sp)) && (!lf || a.matching.life_stages.includes(lf)) &&
     (!q || [a.profile.full_name, a.profile.firm_name, a.profile.location, a.profile.top_specialties, a.matching.specialties.join(' '), a.team_members.map(m => m.name).join(' ')].join(' ').toLowerCase().includes(q)));
   const cs = document.getElementById('clearState');
-  cs.style.display = selState ? '' : 'none'; cs.textContent = selState ? `Licensed in ${ST[selState]} ✕` : '';
+  cs.style.display = selState ? '' : 'none'; cs.textContent = selState ? `${mode === 'lic' ? 'Licensed in' : 'Office in'} ${ST[selState]} ✕` : '';
   document.getElementById('listSub').textContent = `${view.length} of ${ADV.length} advisors. Click any advisor to see the full profile, then use the arrows to click through.`;
   document.getElementById('grid').innerHTML = view.map((a, i) => `<div class="card" data-i="${i}">${avatar(a)}<div>
       <h4>${esc(a.display)}</h4><div class="firm">${esc(a.profile.firm_name)}</div>
