@@ -160,7 +160,7 @@ const abOf = f => NAME2AB[f.properties.name.toLowerCase()];
 
 function officeState(loc){
   const m = String(loc || '').match(/,\s*([A-Za-z .]+?)\s*(\d{5})?\s*$/); if (!m) return '';
-  const t = m[1].trim(); if (ST[t.toUpperCase()]) return t.toUpperCase();
+  const t = m[1].replace(/./g, '').trim(); if (ST[t.toUpperCase()]) return t.toUpperCase();
   return NAME2AB[t.toLowerCase()] || '';
 }
 const allStates = a => a.matching.works_nationwide || Object.keys(ST).every(s => a.matching.states_licensed.includes(s));
